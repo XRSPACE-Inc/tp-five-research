@@ -1,0 +1,31 @@
+﻿body {
+	margin: 0;
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	-khtml-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
+
+.container {
+	position: relative;
+}
+
+#glcanvas {
+	width: 100vw;
+	height: 100vh;
+	display: block;
+}
+
+#text {
+	background-color: transparent;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	z-index: 10;
+}
+
+.text_id {
+	position: absolute;
+}
