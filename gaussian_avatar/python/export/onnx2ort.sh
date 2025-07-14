@@ -1,0 +1,1 @@
+python -m onnxruntime.tools.convert_onnx_models_to_ort $1 --optimization_style Runtime

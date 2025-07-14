@@ -1,0 +1,131 @@
+#
+# Copyright (C) 2023, Inria
+# GRAPHDECO research group, https://team.inria.fr/graphdeco
+# All rights reserved.
+#
+# This software is free for non-commercial, research and evaluation use
+# under the terms of the LICENSE.md file.
+#
+# For inquiries contact  george.drettakis@inria.fr
+#
+
+import torch
+from torch import nn
+import numpy as np
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+
+
+class Camera(nn.Module):
+    def __init__(self, colmap_id, R, T, FoVx, FoVy, image, head_mask, mouth_mask,
+                 exp_param, eyes_pose, eyelids, jaw_pose,
+                 image_name, uid,
+                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device="cuda",
+                 bs_param=None,
+                 transfer_data=None,
+                 ):
+        super(Camera, self).__init__()
+
+        self.uid = uid
+        self.colmap_id = colmap_id
+        self.R = R
+        self.T = T
+        self.FoVx = FoVx
+        self.FoVy = FoVy
+        self.image_name = image_name
+
+        try:
+            self.data_device = torch.device(data_device)
+        except Exception as e:
+            print(e)
+            print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device")
+            self.data_device = torch.device("cuda")
+
+        self.original_image = image.clamp(0.0, 1.0)
+        self.image_width = self.original_image.shape[2]
+        self.image_height = self.original_image.shape[1]
+        self.head_mask = head_mask
+        self.mouth_mask = mouth_mask
+        self.exp_param = exp_param
+        self.eyes_pose = eyes_pose
+        self.eyelids = eyelids
+        self.jaw_pose = jaw_pose
+        self.bs_param = bs_param
+        if transfer_data is not None:
+            self.transfer_vert = transfer_data['verts_final']
+            self.transfer_rot = transfer_data['rot_delta']
+            self.transfer_scale = transfer_data['scale_coef']
+        else:
+            self.transfer_vert = None
+            self.transfer_rot = None
+            self.transfer_scale = None
+
+        self.zfar = 100.0
+        self.znear = 0.01
+
+        self.trans = trans
+        self.scale = scale
+
+        self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
+        self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0, 1).cuda()
+        self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+        self.camera_center = self.world_view_transform.inverse()[3, :3]
+
+    def to_device(self):
+        self.original_image = self.original_image.to(self.data_device)
+        if self.head_mask is not None:
+            self.head_mask = self.head_mask.to(self.data_device)
+        if self.mouth_mask is not None:
+            self.mouth_mask = self.mouth_mask.to(self.data_device)
+        if self.exp_param is not None:
+            self.exp_param = self.exp_param.to(self.data_device)
+        if self.eyes_pose is not None:
+            self.eyes_pose = self.eyes_pose.to(self.data_device)
+        if self.eyelids is not None:
+            self.eyelids = self.eyelids.to(self.data_device)
+        if self.jaw_pose is not None:
+            self.jaw_pose = self.jaw_pose.to(self.data_device)
+        if self.bs_param is not None:
+            self.bs_param = self.bs_param.to(self.data_device)
+        if self.transfer_vert is not None:
+            self.transfer_vert = self.transfer_vert.to(self.data_device)
+        if self.transfer_rot is not None:
+            self.transfer_rot = self.transfer_rot.to(self.data_device)
+        if self.transfer_scale is not None:
+            self.transfer_scale = self.transfer_scale.to(self.data_device)
+
+    def to_cpu(self):
+        self.original_image = self.original_image.to('cpu')
+        if self.head_mask is not None:
+            self.head_mask = self.head_mask.to('cpu')
+        if self.mouth_mask is not None:
+            self.mouth_mask = self.mouth_mask.to('cpu')
+        if self.exp_param is not None:
+            self.exp_param = self.exp_param.to('cpu')
+        if self.eyes_pose is not None:
+            self.eyes_pose = self.eyes_pose.to('cpu')
+        if self.eyelids is not None:
+            self.eyelids = self.eyelids.to('cpu')
+        if self.jaw_pose is not None:
+            self.jaw_pose = self.jaw_pose.to('cpu')
+        if self.bs_param is not None:
+            self.bs_param = self.bs_param.to('cpu')
+        if self.transfer_vert is not None:
+            self.transfer_vert = self.transfer_vert.to('cpu')
+        if self.transfer_rot is not None:
+            self.transfer_rot = self.transfer_rot.to('cpu')
+        if self.transfer_scale is not None:
+            self.transfer_scale = self.transfer_scale.to('cpu')
+
+
+class MiniCam:
+    def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
+        self.image_width = width
+        self.image_height = height
+        self.FoVy = fovy
+        self.FoVx = fovx
+        self.znear = znear
+        self.zfar = zfar
+        self.world_view_transform = world_view_transform
+        self.full_proj_transform = full_proj_transform
+        view_inv = torch.inverse(self.world_view_transform)
+        self.camera_center = view_inv[3][:3]
